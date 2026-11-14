@@ -238,9 +238,28 @@ test('legacy push_tokens are mirrored and un-mirrored', { skip: !enabled }, asyn
   assert.equal(s1.upserted, 1, 'token already registered directly is left alone');
   const owner = await m.db.pool.query(`SELECT device_id FROM notif.device_tokens WHERE token = 'ExponentPushToken[agentA]'`);
   assert.equal(owner.rows[0].device_id, 'device-agentA');
+  const again = await m.legacy.syncLegacyTokens();
+  assert.equal(again.upserted, 0, 'unchanged rows are not rewritten');
   await m.db.pool.query(`DELETE FROM public.push_tokens WHERE token = 'ExponentPushToken[legacy-b]'`);
   const s2 = await m.legacy.syncLegacyTokens();
   assert.equal(s2.removed, 1);
+});
+
+test('dead legacy tokens are not re-imported; re-registering revives them', { skip: !enabled }, async () => {
+  await m.db.pool.query(`INSERT INTO public.push_tokens (user_id, token, platform) VALUES (4, 'ExponentPushToken[legacy-dead]', 'android')`);
+  await m.legacy.syncLegacyTokens();
+  sent.length = 0;
+  const r = await m.processor.processEvent(evt('ticket.outage', 100, 2, { problemSide: 'ISP' }));
+  assert.equal(r.delivery.pruned, 1, 'dead legacy token pruned on send');
+  const s = await m.legacy.syncLegacyTokens();
+  assert.equal(s.upserted, 0, 'pruned token not copied back');
+  const gone = await m.db.pool.query(`SELECT 1 FROM notif.device_tokens WHERE token = 'ExponentPushToken[legacy-dead]'`);
+  assert.equal(gone.rowCount, 0);
+  // the app registering the same token directly clears the tombstone
+  const reg = await call('POST', '/v1/devices/register', CUST(), { token: 'ExponentPushToken[legacy-dead]', platform: 'android', deviceId: 'device-cust-revived' });
+  assert.equal(reg.status, 200);
+  const tomb = await m.db.pool.query(`SELECT 1 FROM notif.pruned_tokens WHERE token = 'ExponentPushToken[legacy-dead]'`);
+  assert.equal(tomb.rowCount, 0);
 });
 
 test('BullMQ worker consumes the queue; bad payload lands in DLQ', { skip: !enabled }, async () => {

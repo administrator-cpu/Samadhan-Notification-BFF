@@ -1,7 +1,7 @@
 import { pool } from '../db.js';
 import { logger } from '../logger.js';
 import { getReceipts } from '../push/expo-client.js';
-import { deleteTokens } from '../repo/tokens.js';
+import { pruneDeadTokens } from '../repo/tokens.js';
 
 /**
  * Expo recommends checking receipts ~15 minutes after sending; they are kept for 24 hours.
@@ -57,6 +57,6 @@ export async function pollReceipts(): Promise<{ checked: number; delivered: numb
   }
   result.delivered = okIds.length;
   result.errors = errIds.length;
-  result.pruned = await deleteTokens(pool, dead);
+  result.pruned = await pruneDeadTokens(dead);
   return result;
 }

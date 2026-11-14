@@ -14,7 +14,7 @@ One Node process runs three things:
 |---|---|
 | **Queue worker** | Reads each ticket event, works out who should be notified, drops the person who caused it and anyone who muted that event type, builds the message, sends it through Expo, and logs every attempt. Retries are safe: an event is never sent twice to the same device. Events that keep failing go to the `notifications-dlq` queue. |
 | **Token API** | `https://samadhan-notify.fab5connect.com/v1/...` — the app registers and removes its device token here. Uses the same login token as the backend. |
-| **Background jobs** | Every 5 min: checks Expo delivery receipts and deletes dead tokens. Every 10 min: copies tokens that older app versions still register with the backend. Every 6 h: deletes old log rows and tokens unseen for 90 days. |
+| **Background jobs** | Every 5 min: checks Expo delivery receipts and deletes dead tokens. Every 10 min: copies tokens that older app versions still register with the backend (tokens Expo reported dead are never copied back). Every 6 h: deletes old log rows and tokens unseen for 90 days. |
 
 The backend never decides who gets notified. It only says *what happened* (see `tool-samadhan/apps/backend/NOTIFICATION_EVENTS.md`).
 
@@ -39,7 +39,7 @@ Each push carries `data: { ticketId, ticketNo, role, eventType, eventId }`. `rol
 
 The service uses the same Postgres database as the backend:
 
-- It **creates and owns** the schema `notif`: `device_tokens`, `preferences`, `delivery_log`, `processed_events`, `event_recipients`, `unread`, `schema_migrations`.
+- It **creates and owns** the schema `notif`: `device_tokens`, `pruned_tokens`, `preferences`, `delivery_log`, `processed_events`, `event_recipients`, `unread`, `schema_migrations`.
 - It **only reads** these backend tables: `tickets`, `customers`, `employees`, `users`, `issue_categories`, `ticket_events`, `sessions`, `push_tokens`.
 
 Migrations in `migrations/` run automatically on start (`MIGRATE_ON_START=true`).

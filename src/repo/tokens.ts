@@ -27,6 +27,8 @@ export interface RegisterInput {
  */
 export async function registerToken(input: RegisterInput): Promise<DeviceToken> {
   return withTransaction(async (tx) => {
+    // The app just proved this token is live (e.g. Expo re-issued the same token after reinstall).
+    await tx.query(`DELETE FROM notif.pruned_tokens WHERE token = $1`, [input.token]);
     await tx.query(
       `DELETE FROM notif.device_tokens WHERE token = $1 AND NOT (device_id = $2 AND kind = $3)`,
       [input.token, input.deviceId, input.kind],
@@ -64,10 +66,18 @@ export async function getTokensForUsers(db: Queryable, userIds: string[], kind: 
   return rows.map(mapRow);
 }
 
-export async function deleteTokens(db: Queryable, tokens: string[]): Promise<number> {
+/** Deletes tokens Expo reported dead and remembers them so the legacy sync never re-imports them. */
+export async function pruneDeadTokens(tokens: string[], reason = 'DeviceNotRegistered'): Promise<number> {
   if (tokens.length === 0) return 0;
-  const { rowCount } = await db.query(`DELETE FROM notif.device_tokens WHERE token = ANY($1::text[])`, [tokens]);
-  return rowCount ?? 0;
+  return withTransaction(async (tx) => {
+    await tx.query(
+      `INSERT INTO notif.pruned_tokens (token, reason) SELECT unnest($1::text[]), $2
+       ON CONFLICT (token) DO UPDATE SET reason = EXCLUDED.reason, pruned_at = now()`,
+      [tokens, reason],
+    );
+    const { rowCount } = await tx.query(`DELETE FROM notif.device_tokens WHERE token = ANY($1::text[])`, [tokens]);
+    return rowCount ?? 0;
+  });
 }
 
 function mapRow(r: any): DeviceToken {

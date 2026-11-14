@@ -1,6 +1,6 @@
 import { pool } from '../db.js';
 import { logger } from '../logger.js';
-import { deleteTokens, type DeviceToken } from '../repo/tokens.js';
+import { pruneDeadTokens, type DeviceToken } from '../repo/tokens.js';
 import { getAlreadySentTokens, logDeliveries, type DeliveryRow } from '../repo/state.js';
 import { sendPush, type ExpoMessage } from './expo-client.js';
 
@@ -50,7 +50,7 @@ export async function deliver(eventId: string, eventType: string, ticketId: stri
 
   await logDeliveries(pool, rows);
   if (dead.length) {
-    summary.pruned = await deleteTokens(pool, dead);
+    summary.pruned = await pruneDeadTokens(dead);
     logger.info('pruned dead tokens', { eventId, count: summary.pruned });
   }
   return summary;
