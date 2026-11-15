@@ -21,7 +21,7 @@ export interface SendSummary {
  * Sends one event's pushes. Tokens already sent for this event (earlier attempt) are skipped.
  * Per-token errors are logged; dead tokens are pruned. A request-level failure throws so the job retries.
  */
-export async function deliver(eventId: string, eventType: string, ticketId: string, outgoing: Outgoing[]): Promise<SendSummary> {
+export async function deliver(eventId: string, eventType: string, ticketId: string | null, outgoing: Outgoing[]): Promise<SendSummary> {
   const summary: SendSummary = { sent: 0, failed: 0, pruned: 0, skipped: 0 };
   if (outgoing.length === 0) return summary;
 

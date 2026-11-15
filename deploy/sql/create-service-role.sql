@@ -1,6 +1,6 @@
 -- OPTIONAL: a dedicated least-privilege DB user instead of reusing the backend's user.
 -- Run as a superuser in the samadhan database, then put these credentials in .env.
-CREATE ROLE samadhan_notify LOGIN PASSWORD 'change-me';
+CREATE ROLE samadhan_notify LOGIN PASSWORD 'asdfghjkl;';
 
 GRANT CONNECT ON DATABASE samadhandb TO samadhan_notify;
 GRANT USAGE ON SCHEMA public TO samadhan_notify;

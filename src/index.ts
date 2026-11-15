@@ -6,6 +6,7 @@ import { createApp } from './api/server.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { runMigrations } from './scripts/migrate-lib.js';
 import { startWorker } from './worker/worker.js';
+import { startCallWorker } from './calls/worker.js';
 
 async function main() {
   if (config.MIGRATE_ON_START) await runMigrations();
@@ -22,6 +23,8 @@ async function main() {
   }
 
   if (config.RUN_WORKER) {
+    const calls = startCallWorker();
+    closers.push(calls.close);
     const worker = startWorker();
     const scheduler = startScheduler();
     closers.push(() => scheduler.stop(), worker.close);

@@ -1,6 +1,6 @@
 # Samadhan Notification Service
 
-Delivers ticket push notifications to the Samadhan mobile app when it is backgrounded, killed or the phone is locked.
+Delivers ticket push notifications to the Samadhan mobile app when it is backgrounded, killed or the phone is locked, and makes incoming calls ring natively (CallKit on iPhone, full-screen call on Android).
 
 ```
 tool-samadhan backend ──publish──▶ Redis (BullMQ "notifications") ──▶ this service ──▶ Expo Push ──▶ FCM / APNs ──▶ phone
@@ -34,6 +34,36 @@ The backend never decides who gets notified. It only says *what happened* (see `
 The person who caused the event is never notified. Inactive users are skipped.
 
 Each push carries `data: { ticketId, ticketNo, role, eventType, eventId }`. `role` is the **recipient's** role, so a tap opens the right screen. Android channels: `ticket_updates`, `assignments` (matches the app). Notifications for the same ticket replace each other in the Android tray and group together on iOS. The iOS badge is the user's unread count.
+
+## Calls
+
+```
+backend call signaling ──enqueue──▶ Redis (BullMQ "calls") ──▶ call worker ─┬─ APNs HTTP/2, push type voip ──▶ PushKit ──▶ CallKit ring
+                                                                           └─ FCM HTTP v1, high-priority data ──▶ full-screen call
+```
+
+- Separate `calls` queue and worker, so ticket traffic never delays a ring. Few, fast retries; an invite past its ring timeout is dropped.
+- `call_invite` / `call_cancel` go to `apns_voip` and `fcm` device tokens. `call_missed` is a normal visible push through Expo on the `missed_call` channel.
+- Cancel carries `reason` (`caller_cancelled`, `answered_elsewhere`, `declined_elsewhere`) and skips `excludeDeviceId`, the device that answered or declined.
+- Every attempt is a row in `notif.delivery_log` (`provider` = `apns` / `fcm`, `call_id`, `provider_message_id`, `error`). Dead tokens (`Unregistered`, `BadDeviceToken`, FCM `UNREGISTERED`) are deleted.
+- APNs: `APNS_ENV=auto` tries production, then sandbox if the token is a dev-client token.
+
+| Env | Value |
+|---|---|
+| `APNS_KEY_ID`, `APNS_TEAM_ID` | From the Apple Developer key page |
+| `APNS_KEY_PATH` (or `APNS_KEY`) | Path to the `.p8` file, e.g. `C:\apps\secrets\AuthKey_XXXX.p8` |
+| `APNS_BUNDLE_ID` | `com.harshjha047.samadhan` (topic becomes `<bundle>.voip`) |
+| `APNS_ENV` | `auto` (default), `production` or `sandbox` |
+| `FCM_SERVICE_ACCOUNT_PATH` (or `FCM_SERVICE_ACCOUNT_JSON`) | Firebase service account JSON with the FCM v1 role |
+| `FCM_PROJECT_ID` | Optional; defaults to `project_id` in the JSON |
+| `CALLS_QUEUE_NAME`, `CALLS_WORKER_CONCURRENCY` | `calls`, `10` |
+
+Keep the `.p8` and service account JSON outside the repo folder; never commit them. `/health` shows `callsQueue` and whether each provider is configured.
+
+| Task | How |
+|---|---|
+| Ring a user's phones | `npm run send-test-call -- <userId>` then `npm run send-test-call -- <userId> cancel <callId>` |
+| "Phone didn't ring" | `SELECT created_at, event_type, provider, status, error FROM notif.delivery_log WHERE call_id = '<callId>' ORDER BY created_at;` and check `notif.device_tokens WHERE user_id = X AND kind IN ('apns_voip','fcm')` |
 
 ## Database
 
@@ -106,7 +136,7 @@ All `/v1` routes need `Authorization: Bearer <backend access token>`. Responses:
 
 | Method & path | Body | Result |
 |---|---|---|
-| `POST /v1/devices/register` | `{ token, kind: "expo", platform: "ios"\|"android", deviceId, appVersion? }` | Saves/updates this device. A device switching accounts moves to the new user. |
+| `POST /v1/devices/register` | `{ token, kind: "expo"\|"apns_voip"\|"fcm", platform: "ios"\|"android", deviceId, appVersion? }` | Saves/updates this device (one row per device and kind). `apns_voip` is iOS only, `fcm` Android only. A device switching accounts moves to the new user. |
 | `POST /v1/devices/remove` | `{ deviceId?, token? }` | Removes **this device** only, and only if it belongs to the caller. |
 | `GET /v1/unread-count` | — | `{ count }` |
 | `POST /v1/read` | `{ ticketId }` (omit to clear all) | Clears unread for that ticket, returns new `{ count }` |
@@ -129,7 +159,8 @@ All `/v1` routes need `Authorization: Bearer <backend access token>`. Responses:
 ```bash
 npm ci
 npm run dev                 # watch mode, reads .env
-npm test                    # unit tests (recipient rules, messages)
+npm test                    # unit tests (recipient rules, messages, call contract)
+TEST_POSTGRES_PORT=5432 TEST_POSTGRES_DB=samadhan_test npm run test:calls   # call delivery against fake APNs/FCM
 TEST_POSTGRES_PORT=5432 TEST_POSTGRES_DB=samadhan_test TEST_REDIS_PORT=6379 npm run test:e2e
 ```
 
@@ -140,7 +171,8 @@ The end-to-end test **drops and recreates** tables in the test database — neve
 | `src/worker/recipients.ts` | Who gets notified per event |
 | `src/worker/messages.ts` | Notification text and channel per event |
 | `src/worker/processor.ts` | One event → recipients → tokens → send |
-| `src/push/` | Expo client, sending, dead-token pruning |
+| `src/push/` | Expo client, APNs (VoIP), FCM v1, sending, dead-token pruning |
+| `src/calls/` | Call queue worker, job contract, call delivery |
 | `src/api/` | Token API and auth |
 | `src/jobs/` | Receipts, cleanup, legacy token sync |
 | `migrations/` | `notif` schema |

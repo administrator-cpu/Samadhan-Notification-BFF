@@ -78,7 +78,7 @@ export async function markTicketRead(db: Queryable, userId: string, ticketId: st
 export interface DeliveryRow {
   eventId: string;
   eventType: string;
-  ticketId: string;
+  ticketId: string | null;
   userId: string;
   deviceTokenId: string | null;
   token: string;

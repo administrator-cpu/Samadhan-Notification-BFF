@@ -5,7 +5,7 @@ DROP TABLE IF EXISTS public.push_tokens, public.sessions, public.ticket_events, 
 DROP TYPE IF EXISTS user_role, ticket_status;
 CREATE TYPE user_role AS ENUM ('USER', 'SUPPORT_AGENT', 'ADMIN', 'SALES', 'GUEST');
 CREATE TYPE ticket_status AS ENUM ('OPEN', 'IN_PROGRESS', 'ESCALATED', 'RESOLVED', 'CLOSED');
-CREATE TABLE public.users (id BIGINT PRIMARY KEY, name VARCHAR(255) NOT NULL, role user_role NOT NULL DEFAULT 'USER', is_active BOOLEAN NOT NULL DEFAULT true);
+CREATE TABLE public.users (id BIGINT PRIMARY KEY, name VARCHAR(255) NOT NULL, email VARCHAR(255), role user_role NOT NULL DEFAULT 'USER', is_active BOOLEAN NOT NULL DEFAULT true);
 CREATE TABLE public.employees (id BIGINT PRIMARY KEY, user_id BIGINT NOT NULL UNIQUE REFERENCES public.users(id));
 CREATE TABLE public.customers (id BIGINT PRIMARY KEY, user_id BIGINT NOT NULL UNIQUE REFERENCES public.users(id));
 CREATE TABLE public.issue_categories (id BIGINT PRIMARY KEY, name VARCHAR(255) NOT NULL);
