@@ -15,10 +15,12 @@
     "migrate:dev": "tsx src/scripts/migrate.ts",
     "sync-legacy-tokens": "node dist/scripts/sync-legacy-tokens.js",
     "send-test": "node dist/scripts/send-test.js",
+    "send-test-call": "node dist/scripts/send-test-call.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test test/rules.test.ts",
+    "test": "tsx --test test/rules.test.ts test/calls.test.ts",
     "requeue-dlq": "node dist/scripts/requeue-dlq.js",
-    "test:e2e": "tsx --test test/integration.test.ts"
+    "test:e2e": "tsx --test test/integration.test.ts",
+    "test:calls": "tsx --test test/calls.test.ts"
   },
   "dependencies": {
     "bullmq": "^5.77.3",

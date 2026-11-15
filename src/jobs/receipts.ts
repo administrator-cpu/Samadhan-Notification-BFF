@@ -10,14 +10,14 @@ import { pruneDeadTokens } from '../repo/tokens.js';
 export async function pollReceipts(): Promise<{ checked: number; delivered: number; errors: number; pruned: number; missing: number }> {
   const { rows } = await pool.query<{ id: string; provider_ticket_id: string; token: string }>(
     `SELECT id::text, provider_ticket_id, token FROM notif.delivery_log
-      WHERE status = 'sent' AND provider_ticket_id IS NOT NULL
+      WHERE status = 'sent' AND provider = 'expo' AND provider_ticket_id IS NOT NULL
         AND created_at < now() - interval '15 minutes' AND created_at > now() - interval '23 hours'
       ORDER BY created_at LIMIT 5000`,
   );
 
   const missing = await pool.query(
     `UPDATE notif.delivery_log SET status = 'receipt_missing', updated_at = now()
-      WHERE status = 'sent' AND created_at <= now() - interval '23 hours'`,
+      WHERE status = 'sent' AND provider = 'expo' AND created_at <= now() - interval '23 hours'`,
   );
 
   const result = { checked: rows.length, delivered: 0, errors: 0, pruned: 0, missing: missing.rowCount ?? 0 };

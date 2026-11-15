@@ -6,6 +6,8 @@ import { pool } from '../db.js';
 import { logger } from '../logger.js';
 import { createRedis } from '../redis.js';
 import { isExpoPushToken } from '../push/expo-client.js';
+import { isApnsConfigured } from '../push/apns.js';
+import { isFcmConfigured } from '../push/fcm.js';
 import { getPreferences, getUnreadCounts, markTicketRead, setPreferences } from '../repo/state.js';
 import { registerToken, removeDeviceTokens } from '../repo/tokens.js';
 import { EVENT_TYPES } from '../contract.js';
@@ -19,7 +21,16 @@ const registerSchema = z
     deviceId: z.string().min(8).max(128),
     appVersion: z.string().max(32).optional().nullable(),
   })
-  .refine((v) => v.kind !== 'expo' || isExpoPushToken(v.token), { message: 'Not a valid Expo push token', path: ['token'] });
+  .refine((v) => v.kind !== 'expo' || isExpoPushToken(v.token), { message: 'Not a valid Expo push token', path: ['token'] })
+  .refine((v) => v.kind !== 'apns_voip' || (v.platform === 'ios' && /^[0-9a-fA-F]{64,200}$/.test(v.token)), {
+    message: 'Not a valid PushKit VoIP token',
+    path: ['token'],
+  })
+  .refine((v) => v.kind !== 'fcm' || (v.platform === 'android' && /^[\w\-:.]{100,}$/.test(v.token)), {
+    message: 'Not a valid FCM registration token',
+    path: ['token'],
+  })
+  .transform((v) => (v.kind === 'apns_voip' ? { ...v, token: v.token.toLowerCase() } : v));
 
 const removeSchema = z
   .object({
@@ -47,6 +58,7 @@ export function createApp() {
 
   const healthRedis = createRedis('health');
   const queue = new Queue(config.QUEUE_NAME, { connection: healthRedis });
+  const callsQueue = new Queue(config.CALLS_QUEUE_NAME, { connection: healthRedis });
   const dlq = new Queue(config.DLQ_NAME, { connection: healthRedis });
 
   app.get('/health', wrap(async (_req, res) => {
@@ -65,6 +77,8 @@ export function createApp() {
       const counts = await queue.getJobCounts('waiting', 'active', 'delayed', 'failed');
       const deadLetters = await dlq.count();
       checks.queue = counts;
+      checks.callsQueue = await callsQueue.getJobCounts('waiting', 'active', 'delayed', 'failed');
+      checks.callProviders = { apns: isApnsConfigured(), fcm: isFcmConfigured() };
       checks.deadLetters = deadLetters;
       if (deadLetters >= config.DLQ_ALERT_THRESHOLD && config.DLQ_ALERT_THRESHOLD > 0) checks.alert = 'dead-letter queue has jobs';
     } catch (err) {
@@ -130,6 +144,7 @@ export function createApp() {
     app,
     async close() {
       await queue.close();
+      await callsQueue.close();
       await dlq.close();
       healthRedis.disconnect();
     },
