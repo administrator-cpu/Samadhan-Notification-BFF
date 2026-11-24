@@ -28,6 +28,8 @@ const schema = z.object({
   JWT_SECRET: z.string().min(1, 'JWT_SECRET is required'),
   // Reject access tokens whose session is revoked/expired or whose user is inactive.
   AUTH_CHECK_SESSION: bool(true),
+  // Deliver only to devices whose backend login session is still active (logout/expiry stops pushes).
+  REQUIRE_ACTIVE_SESSION: bool(true),
 
   EXPO_ACCESS_TOKEN: z.string().default(''),
   EXPO_API_URL: z.string().url().default('https://exp.host/--/api/v2'),

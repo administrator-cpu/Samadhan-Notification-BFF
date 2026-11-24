@@ -9,7 +9,7 @@ import { isExpoPushToken } from '../push/expo-client.js';
 import { isApnsConfigured } from '../push/apns.js';
 import { isFcmConfigured } from '../push/fcm.js';
 import { getPreferences, getUnreadCounts, markTicketRead, setPreferences } from '../repo/state.js';
-import { registerToken, removeDeviceTokens } from '../repo/tokens.js';
+import { asJti, registerToken, removeDeviceTokens } from '../repo/tokens.js';
 import { EVENT_TYPES } from '../contract.js';
 import { requireAuth } from './auth.js';
 
@@ -94,7 +94,12 @@ export function createApp() {
   v1.post('/devices/register', wrap(async (req, res) => {
     const parsed = registerSchema.safeParse(req.body ?? {});
     if (!parsed.success) return badRequest(res, parsed.error);
-    const row = await registerToken({ ...parsed.data, appVersion: parsed.data.appVersion ?? null, userId: req.auth!.userId });
+    const row = await registerToken({
+      ...parsed.data,
+      appVersion: parsed.data.appVersion ?? null,
+      userId: req.auth!.userId,
+      sessionJti: asJti(req.auth!.jti),
+    });
     res.json({ success: true, data: { id: row.id, deviceId: row.deviceId, kind: row.kind } });
   }));
 

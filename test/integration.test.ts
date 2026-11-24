@@ -290,3 +290,62 @@ test('BullMQ worker consumes the queue; bad payload lands in DLQ', { skip: !enab
     conn.disconnect();
   }
 });
+
+// ── Session-gated delivery ──────────────────────────────────────────────────
+const sql = (q: string, p: unknown[] = []) => m.db.pool.query(q, p);
+const newSession = async (userId: number, jti: string, ua: string | null = 'okhttp/4.12.0') =>
+  sql(`INSERT INTO public.sessions (user_id, jti, user_agent, expires_at) VALUES ($1, $2, $3, now() + interval '7 days')`, [userId, jti, ua]);
+// What the backend does on refresh: revoke old + create new in ONE transaction (same now()).
+const rotate = async (oldJti: string, newJti: string) => {
+  const c = await m.db.pool.connect();
+  try {
+    await c.query('BEGIN');
+    const { rows } = await c.query(`UPDATE public.sessions SET revoked = true, revoked_at = now() WHERE jti = $1 RETURNING user_id`, [oldJti]);
+    await c.query(`INSERT INTO public.sessions (user_id, jti, user_agent, expires_at) VALUES ($1, $2, 'okhttp/4.12.0', now() + interval '7 days')`, [rows[0].user_id, newJti]);
+    await c.query('COMMIT');
+  } finally { c.release(); }
+};
+const logoutSession = (jti: string) => sql(`UPDATE public.sessions SET revoked = true, revoked_at = now() WHERE jti = $1`, [jti]);
+const pushTo = async (frag: string) => {
+  sent.length = 0;
+  await m.processor.processEvent(evt('ticket.reassigned', 100, 1, { previousEmployeeId: '10', newEmployeeId: '11' }));
+  return to(frag).length;
+};
+
+test('session gate: logout stops pushes to that device only; refresh rotation keeps them', { skip: !enabled }, async () => {
+  const A = 'aaaaaaaa-0000-4000-8000-000000000001';
+  const A2 = 'aaaaaaaa-0000-4000-8000-000000000002';
+  const A3 = 'aaaaaaaa-0000-4000-8000-000000000003';
+  await newSession(3, A);
+  const r = await call('POST', '/v1/devices/register', token(3, A, 'SUPPORT_AGENT'), { token: 'ExponentPushToken[meera-phone2]', platform: 'android', deviceId: 'device-meera-2' });
+  assert.equal(r.status, 200);
+  assert.equal(await pushTo('meera-phone2'), 1, 'logged-in device receives');
+
+  await rotate(A, A2);
+  await rotate(A2, A3);
+  assert.equal(await pushTo('meera-phone2'), 1, 'still receives after two token refreshes');
+
+  await logoutSession(A3);
+  assert.equal(await pushTo('meera-phone2'), 0, 'logged-out device receives nothing');
+  assert.equal(await pushTo('agentB'), 1, "the user's other logged-in phone still receives");
+});
+
+test('session gate: expired session stops pushes', { skip: !enabled }, async () => {
+  const E = 'eeeeeeee-0000-4000-8000-000000000001';
+  await newSession(3, E);
+  await call('POST', '/v1/devices/register', token(3, E, 'SUPPORT_AGENT'), { token: 'ExponentPushToken[meera-phone3]', platform: 'android', deviceId: 'device-meera-3' });
+  assert.equal(await pushTo('meera-phone3'), 1);
+  await sql(`UPDATE public.sessions SET expires_at = now() - interval '1 minute' WHERE jti = $1`, [E]);
+  assert.equal(await pushTo('meera-phone3'), 0);
+});
+
+test('session gate: legacy (old app) tokens need an active non-browser session', { skip: !enabled }, async () => {
+  await sql(`INSERT INTO public.push_tokens (user_id, token, platform) VALUES (3, 'ExponentPushToken[meera-oldapp]', 'android')`);
+  await m.legacy.syncLegacyTokens();
+  // Meera still has active app sessions → old-app phone gets it
+  assert.equal(await pushTo('meera-oldapp'), 1);
+  // log out every app session; leave only a web dashboard login
+  await sql(`UPDATE public.sessions SET revoked = true, revoked_at = now() WHERE user_id = 3 AND NOT revoked`);
+  await newSession(3, 'bbbbbbbb-0000-4000-8000-000000000001', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0');
+  assert.equal(await pushTo('meera-oldapp'), 0, 'web login does not keep a logged-out phone subscribed');
+});

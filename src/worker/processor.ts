@@ -18,7 +18,7 @@ import {
   markEventProcessed,
   recordRecipients,
 } from '../repo/state.js';
-import { getTokensForUsers } from '../repo/tokens.js';
+import { getTokensForDelivery } from '../repo/tokens.js';
 import { deliver, type Outgoing, type SendSummary } from '../push/sender.js';
 import { buildMessage } from './messages.js';
 import { resolveRecipients } from './recipients.js';
@@ -98,7 +98,7 @@ export async function processEvent(raw: unknown): Promise<ProcessResult> {
   else if (event.eventType === 'ticket.rated') snippet = ticket.ratingFeedback;
 
   const actorName = event.actorUserId ? users.get(event.actorUserId)?.name ?? null : null;
-  const tokens = await getTokensForUsers(pool, recipients.map((r) => r.userId));
+  const tokens = await getTokensForDelivery(pool, recipients.map((r) => r.userId));
 
   const outgoing: Outgoing[] = [];
   for (const r of recipients) {

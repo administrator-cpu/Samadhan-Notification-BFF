@@ -33,6 +33,8 @@ The backend never decides who gets notified. It only says *what happened* (see `
 
 The person who caused the event is never notified. Inactive users are skipped.
 
+A device only receives pushes (tickets and calls) while it is still logged in: its backend session, followed across token refreshes, must be active. Logout, password change, deactivation or session expiry stops pushes to that device even if its token was never removed. Tokens copied from old app versions need the user to have an active app (non-browser) session. Turn off with `REQUIRE_ACTIVE_SESSION=false`.
+
 Each push carries `data: { ticketId, ticketNo, role, eventType, eventId }`. `role` is the **recipient's** role, so a tap opens the right screen. Android channels: `ticket_updates`, `assignments` (matches the app). Notifications for the same ticket replace each other in the Android tray and group together on iOS. The iOS badge is the user's unread count.
 
 ## Calls

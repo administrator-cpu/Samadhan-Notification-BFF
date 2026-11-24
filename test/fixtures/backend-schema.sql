@@ -14,7 +14,7 @@ CREATE TABLE public.tickets (
   customer_id BIGINT NOT NULL REFERENCES public.customers(id), current_assigned_employee_id BIGINT REFERENCES public.employees(id),
   primary_issue_category_id BIGINT REFERENCES public.issue_categories(id), rating_feedback TEXT, problem_side VARCHAR(100), telco_sr_number VARCHAR(100));
 CREATE TABLE public.ticket_events (id BIGINT PRIMARY KEY, ticket_id BIGINT NOT NULL, actor_user_id BIGINT, event_type VARCHAR(255) NOT NULL, message TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
-CREATE TABLE public.sessions (id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL, jti UUID NOT NULL UNIQUE, expires_at TIMESTAMPTZ NOT NULL, revoked BOOLEAN NOT NULL DEFAULT false);
+CREATE TABLE public.sessions (id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL, jti UUID NOT NULL UNIQUE, user_agent TEXT, expires_at TIMESTAMPTZ NOT NULL, revoked BOOLEAN NOT NULL DEFAULT false, revoked_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE public.push_tokens (id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL, token TEXT NOT NULL UNIQUE, platform VARCHAR(50), created_at TIMESTAMPTZ NOT NULL DEFAULT now());
 
 INSERT INTO public.users (id, name, role, is_active) VALUES
@@ -35,6 +35,7 @@ INSERT INTO public.ticket_events (id, ticket_id, actor_user_id, event_type, mess
 INSERT INTO public.sessions (user_id, jti, expires_at, revoked) VALUES
   (4, '11111111-1111-4111-8111-111111111111', now() + interval '1 day', false),
   (4, '22222222-2222-4222-8222-222222222222', now() + interval '1 day', true),
+  (3, '66666666-6666-4666-8666-666666666666', now() + interval '1 day', false),
   (2, '33333333-3333-4333-8333-333333333333', now() + interval '1 day', false),
   (3, '44444444-4444-4444-8444-444444444444', now() + interval '1 day', false),
   (1, '55555555-5555-4555-8555-555555555555', now() + interval '1 day', false);
