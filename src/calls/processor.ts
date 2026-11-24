@@ -5,7 +5,7 @@ import { APNS_DEAD_REASONS, isApnsConfigured, sendVoipPush } from '../push/apns.
 import { FCM_DEAD_CODES, isFcmConfigured, sendFcmData } from '../push/fcm.js';
 import { deliver, type Outgoing, type SendSummary } from '../push/sender.js';
 import { getAlreadySentTokens } from '../repo/state.js';
-import { getTokensForUsers, pruneDeadTokens, type DeviceToken } from '../repo/tokens.js';
+import { getTokensForDelivery, pruneDeadTokens, type DeviceToken } from '../repo/tokens.js';
 import { CHANNELS } from '../worker/messages.js';
 import { callJobSchema, callPayload, CALL_SUPPORTED_VERSIONS, type CallJob } from './contract.js';
 import { logCallDeliveries, resolveUserId, type CallDeliveryRow } from './repo.js';
@@ -94,7 +94,7 @@ async function sendNative(job: CallJob, userId: string, tokens: DeviceToken[]): 
 }
 
 async function sendMissedCall(job: CallJob, userId: string): Promise<SendSummary> {
-  const tokens = await getTokensForUsers(pool, [userId], 'expo');
+  const tokens = await getTokensForDelivery(pool, [userId], 'expo');
   const caller = job.callerName || 'Someone';
   const outgoing: Outgoing[] = tokens.map((token) => ({
     userId,
@@ -136,8 +136,8 @@ export async function processCallJob(raw: unknown): Promise<CallProcessResult> {
   }
 
   const tokens = [
-    ...(await getTokensForUsers(pool, [userId], 'apns_voip')),
-    ...(await getTokensForUsers(pool, [userId], 'fcm')),
+    ...(await getTokensForDelivery(pool, [userId], 'apns_voip')),
+    ...(await getTokensForDelivery(pool, [userId], 'fcm')),
   ].filter((t) => !(job.type === 'call_cancel' && job.excludeDeviceId && t.deviceId === job.excludeDeviceId));
   if (tokens.length === 0) {
     logger.warn('no VoIP/FCM tokens for call recipient', { ...log, userId });
